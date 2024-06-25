@@ -52,6 +52,9 @@ using Zygote
 # ╔═╡ 5a487f3e-8ec0-45c8-bc7e-a1666cb00c1a
 using AdvancedHMC
 
+# ╔═╡ 549564c1-ba25-4450-9706-909253c46ea9
+using ImageFiltering
+
 # ╔═╡ 84d0eb5e-0cad-49b3-a22f-611c0cf9d9f1
 PlutoUI.TableOfContents()
 
@@ -121,7 +124,7 @@ We can then preprocess the data using the standard eht-imaging functions, and so
 """
 
 # ╔═╡ 5121376f-9c2b-43be-8b8c-e87140873411
-obsavg = scan_average(obs).add_fractional_noise(0.02) # flag short baselines
+obsavg = scan_average(obs).add_fractional_noise(0.02).flag_uvdist(0.1e9) # flag short baselines
 
 # ╔═╡ 2a7c196b-370d-4541-93a9-6b8ba30e374e
 md"""
@@ -266,12 +269,11 @@ end
 
 # ╔═╡ 66f51dc1-af56-417f-a963-8e91f97e0e26
 begin
-	if bls[1] == bls[2]
-		throw(ArgumentError("The first and second sites must be different"))
-	end
 	visbl = single_baseline(dvis, bls[1], bls[2])
 	tbl = datatable(visbl)
-	CM.scatter(tbl.baseline.Ti, abs.(tbl.measurement), axis=(xlabel="Time", ylabel="Amplitude"))
+	fig, ax, pl = CM.scatter(tbl.baseline.Ti, abs.(tbl.measurement), axis=(xlabel="Time", ylabel="Amplitude"))
+	ax.title = "Bl: $(bls[1]), $(bls[2])"
+	fig
 end
 
 # ╔═╡ 208067d1-3994-4eb7-894e-3fe85e856d43
@@ -292,7 +294,7 @@ In this tutorials, we will show how to use Comrade's geometric modeling and imag
 md"""
 ### Geometric Modeling
 
-This tutorial is inspired by this [tutorial](https://ptiede.github.io/Comrade.jl/v0.10.4/tutorials/beginner/GeometricModeling). The first thing we need to do is construct the model we would like to fit. Comrade is built upon [`VLBISkyModels.jl](https://github.com/EHTJulia/VLBISkyModels.jl), which tries to construct **primitive** and **modifiers* to construct a vast array of models flexibly.
+This tutorial is inspired by this [tutorial](https://ptiede.github.io/Comrade.jl/v0.10.4/tutorials/beginner/GeometricModeling). The first thing we need to do is construct the model we would like to fit. Comrade is built upon [`VLBISkyModels.jl](https://github.com/EHTJulia/VLBISkyModels.jl), which tries to construct **primitive** and **modifiers** to construct a vast array of models flexibly.
 """
 
 # ╔═╡ 06f5466d-7625-4ff2-bf1e-88f30e13f338
@@ -325,7 +327,7 @@ plot_model(gimg, modify(Gaussian(), Stretch(2.0, 1.0), Rotate(π/4), Shift(2.0, 
 md"""
 For EHT data the model we would like to fit is the m-ring model from [Johnson et al.](https://www.science.org/doi/10.1126/sciadv.aaz1310), which uses a delta ring with azimuthal Fourier modes and then blurred with a Gaussian to give the ring some thickness. 
 
-To flexibly specify the model construction we first write a function.
+To specify the model construction flexibly, we first write a function.
 """
 
 # ╔═╡ d6189b73-12d2-4968-8111-aff8b6e4bd80
@@ -345,7 +347,7 @@ We can now visualize what the different parameters of the m-ring do
 
 **width**  $(@bind width  Slider(1.0:1.0:20.0))
 
-**ma**     $(@bind ma     Slider(0.0:0.1:1.0))
+**ma**     $(@bind ma     Slider(0.0:0.1:0.5))
 
 **mp**     $(@bind mp     Slider(0.0:0.1:2*pi))
 
@@ -499,14 +501,14 @@ For the mean image we will use a Gaussian with FWHM of 60 uas
 """
 
 # ╔═╡ a845f37b-d4cf-463e-8643-8df32c06ab43
-mimg = intensitymap(modify(Gaussian(), Stretch(μas2rad(60.0)/(2*sqrt(2*log(2))))), gimage)
+mimg = intensitymap(modify(Gaussian(), Stretch(μas2rad(50.0)/(2*sqrt(2*log(2))))), gimage)
 
 # ╔═╡ 45aa1771-dd77-4029-8f38-44c736b2d2d1
 function skyimage(params, meta)
-	(;c,) = params
+	(;c, σ) = params
 	(;mimg) = meta
 	# Apply GMRF fluctuations in the logratio space
-	raster = apply_fluctuations(CenteredLR(), mimg, c)
+	raster = apply_fluctuations(CenteredLR(), mimg, σ.*c)
 	m = ContinuousImage(raster, BSplinePulse{3}())
 	return m
 end
@@ -517,12 +519,16 @@ Next, we need to specify the image. For this, we will use a _Gaussian Markov Ran
 
 The explicit GMRF prior we will use the the first-order model that is equivalent to _total square variation_ and ``L_2`` regularization from RML imaging. A paper is in prep., explaining the details. Note that a major difference is that we will apply the MRF in essentially log space to ensure image positivity.
 
-In addition, while we fix the image correlation length and GMRF variance in this tutorial, we generally recommend you fit these parameters. We just removed them for simplicity. The Comrade tutorials go into some detail about how we fit these parameters.
+In addition, while we fix the image correlation length in this tutorial, we generally recommend you fit these parameters as is done in the Comrade documentation tutorials
 """
+
+# ╔═╡ 52019889-df5d-45e6-8c65-d6a00028e6bb
+cmarkov = ConditionalMarkov(GMRF, gimage)
 
 # ╔═╡ c67cdfd4-3b2d-4cea-a379-e98f0bf30ae0
 imageprior = (
-	c = GaussMarkovRandomField(20.0, size(mimg)), # 15.0 is the image correlation length in pixel size,
+	c = GMRF(15.0, size(gimage)), # 15.0 is the image correlation length in pixel size,
+	σ = Exponential(0.5) # GMRF standard deviation
 	)
 
 # ╔═╡ 78f66fa3-45a7-406e-b28a-cb1d1ba8d460
@@ -544,8 +550,11 @@ Optimization now proceeds as normal although here we will switch to a gradient b
 # ╔═╡ c494e91d-f7c3-4e06-997c-f4340d30a756
 xoptimg, _ = comrade_opt(postimg, Adam(), AutoZygote(); maxiters=10_000)
 
+# ╔═╡ 6d577c04-94d8-4cc4-a911-b54fb7bd47f6
+gplot = imagepixels(μas2rad(150.0), μas2rad(150.0), 128, 128)
+
 # ╔═╡ 046e5512-6d86-4e85-83b1-5f56fd9cc950
-imageviz(intensitymap(skymodel(postimg, xoptimg), gimage))
+imageviz(intensitymap(skymodel(postimg, xoptimg), gplot))
 
 # ╔═╡ d9228894-809e-466d-9a73-247ffc80dff5
 md"""
@@ -558,12 +567,12 @@ For this we will use `AdvancedHMC.jl` and its NUTS implementation of the _NUTS H
 """
 
 # ╔═╡ 5ba7adaf-b78f-4f85-bc89-8deec4a2ea92
-chainimg = sample(postimg, NUTS(0.8), 700; n_adapts=500, adtype=AutoZygote(), initial_params=xoptimg, progress=false)
+chainimg = sample(postimg, NUTS(0.8), 1000; n_adapts=500, adtype=AutoZygote(), initial_params=xoptimg, progress=false)
 
 # ╔═╡ 486eb180-3d81-4ced-9451-0412c8bf4b14
 md"""
 !!! warning
-    We really should run this sampler longer, but let's get this tutorial moving
+    We really should run the sampler longer, but let's get this tutorial moving
 """
 
 # ╔═╡ c59df7f0-b006-47f4-88b0-aeda378b64f9
@@ -571,14 +580,17 @@ md"""
 Now we can plot the results as normal. 
 """
 
-# ╔═╡ 4560be14-5758-43bf-b274-511b826461e1
-gplot = imagepixels(μas2rad(150.0), μas2rad(150.0), 128, 128)
-
 # ╔═╡ ed1a5c4b-adc8-4278-ba21-ea38ae0c4c38
 imgsamples = intensitymap.(skymodel.(Ref(postimg), chainimg[501:2:end]), Ref(gplot));
 
 # ╔═╡ 41d0fb1b-6f8f-4621-ac40-31b98df68588
-imageviz(mean(imgsamples))
+imageviz(mean(center_image.(imgsamples)))
+
+# ╔═╡ 2c170c45-3362-432f-8926-c884582f52fe
+@bind index Slider(eachindex(imgsamples))
+
+# ╔═╡ 97ece260-e4f1-4816-a6f4-5b1abeb87518
+imageviz(center_image(imfilter(imgsamples[index], Kernel.gaussian((3,3)))))
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -587,6 +599,7 @@ AdvancedHMC = "0bf59076-c3b1-5ca4-86bd-e02cd72cde3d"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 Comrade = "99d987ce-9a1e-4df8-bc0b-1ea019aa547b"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+ImageFiltering = "6a3955dd-da59-5b1f-98d4-e7296123deb5"
 Optimization = "7f7a1694-90dd-40f0-9382-eb1efda571ba"
 OptimizationBBO = "3e6eede4-6085-4f62-9a71-46d9bc1eb92b"
 OptimizationOptimisers = "42dfb2eb-d2b4-4451-abcd-913932933ac1"
@@ -602,6 +615,7 @@ AdvancedHMC = "~0.6.1"
 CairoMakie = "~0.12.3"
 Comrade = "~0.10.4"
 Distributions = "~0.25.109"
+ImageFiltering = "~0.7.8"
 Optimization = "~3.26.2"
 OptimizationBBO = "~0.2.1"
 OptimizationOptimisers = "~0.2.1"
@@ -619,7 +633,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.4"
 manifest_format = "2.0"
-project_hash = "3cc01bdd7a492d7667c3c7899a4e463ef06626a1"
+project_hash = "398b71e876d43aab8efbeea9be384de8cc8154fa"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "3a6511b6e54550bcbc986c560921a8cd7761fcd8"
@@ -903,6 +917,12 @@ git-tree-sha1 = "f641eb0a4f00c343bbc32346e1217b86f3ce9dad"
 uuid = "49dc2e85-a5d0-5ad3-a950-438e2897f1b9"
 version = "0.5.1"
 
+[[deps.CatIndices]]
+deps = ["CustomUnitRanges", "OffsetArrays"]
+git-tree-sha1 = "a0f80a09780eed9b1d106a1bf62041c2efc995bc"
+uuid = "aafaddc9-749c-510e-ac4f-586e18779b91"
+version = "0.2.2"
+
 [[deps.ChainRules]]
 deps = ["Adapt", "ChainRulesCore", "Compat", "Distributed", "GPUArraysCore", "IrrationalConstants", "LinearAlgebra", "Random", "RealDot", "SparseArrays", "SparseInverseSubset", "Statistics", "StructArrays", "SuiteSparse"]
 git-tree-sha1 = "227985d885b4dbce5e18a96f9326ea1e836e5a03"
@@ -1004,6 +1024,11 @@ weakdeps = ["InverseFunctions"]
     [deps.CompositionsBase.extensions]
     CompositionsBaseInverseFunctionsExt = "InverseFunctions"
 
+[[deps.ComputationalResources]]
+git-tree-sha1 = "52cb3ec90e8a8bea0e62e275ba577ad0f74821f7"
+uuid = "ed09eef8-17a6-5b46-8889-db040fac31e3"
+version = "0.3.2"
+
 [[deps.Comrade]]
 deps = ["AbstractMCMC", "Accessors", "ArgCheck", "AstroTime", "ChainRulesCore", "ComradeBase", "DelimitedFiles", "DensityInterface", "DimensionalData", "Distributions", "DocStringExtensions", "Enzyme", "FillArrays", "ForwardDiff", "HypercubeTransform", "IntervalSets", "LinearAlgebra", "LogDensityProblems", "LogDensityProblemsAD", "NamedTupleTools", "PaddedViews", "ParameterHandling", "PolarizedTypes", "PrettyTables", "Printf", "Random", "RecipesBase", "Reexport", "Serialization", "SparseArrays", "SpecialFunctions", "StaticArraysCore", "Statistics", "StatsBase", "StructArrays", "Tables", "TransformVariables", "VLBIImagePriors", "VLBILikelihoods", "VLBISkyModels"]
 git-tree-sha1 = "b94389ef9edbabf28cd12434ea8d97f1037b30d0"
@@ -1087,6 +1112,11 @@ version = "0.6.3"
 git-tree-sha1 = "249fe38abf76d48563e2f4556bebd215aa317e15"
 uuid = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
 version = "4.1.1"
+
+[[deps.CustomUnitRanges]]
+git-tree-sha1 = "1a3f97f907e6dd8983b744d2642651bb162a3f7a"
+uuid = "dc8bdbbb-1ca9-579f-8c36-e416f6a65cce"
+version = "1.0.2"
 
 [[deps.DataAPI]]
 git-tree-sha1 = "abe83f3a2f1b857aac70ef8b269080af17764bbe"
@@ -1297,6 +1327,12 @@ deps = ["Artifacts", "Bzip2_jll", "FreeType2_jll", "FriBidi_jll", "JLLWrappers",
 git-tree-sha1 = "466d45dc38e15794ec7d5d63ec03d776a9aff36e"
 uuid = "b22a6f82-2f65-5046-a5b2-351ab43fb4e5"
 version = "4.4.4+1"
+
+[[deps.FFTViews]]
+deps = ["CustomUnitRanges", "FFTW"]
+git-tree-sha1 = "cbdf14d1e8c7c8aacbe8b19862e0179fd08321c2"
+uuid = "4f61f5a4-77b1-5117-aa51-3ab5ef4ef0cd"
+version = "0.3.2"
 
 [[deps.FFTW]]
 deps = ["AbstractFFTs", "FFTW_jll", "LinearAlgebra", "MKL_jll", "Preferences", "Reexport"]
@@ -1576,6 +1612,11 @@ git-tree-sha1 = "950c3717af761bc3ff906c2e8e52bd83390b6ec2"
 uuid = "7869d1d1-7146-5819-86e3-90919afe41df"
 version = "0.4.14"
 
+[[deps.IfElse]]
+git-tree-sha1 = "debdd00ffef04665ccbb3e150747a77560e8fad1"
+uuid = "615f187c-cbe4-4ef1-ba3b-2fcf58d6d173"
+version = "0.1.1"
+
 [[deps.ImageAxes]]
 deps = ["AxisArrays", "ImageBase", "ImageCore", "Reexport", "SimpleTraits"]
 git-tree-sha1 = "2e4520d67b0cef90865b3ef727594d2a58e0e1f8"
@@ -1593,6 +1634,12 @@ deps = ["ColorVectorSpace", "Colors", "FixedPointNumbers", "MappedArrays", "Mosa
 git-tree-sha1 = "b2a7eaa169c13f5bcae8131a83bc30eff8f71be0"
 uuid = "a09fc81d-aa75-5fe9-8630-4744c3626534"
 version = "0.10.2"
+
+[[deps.ImageFiltering]]
+deps = ["CatIndices", "ComputationalResources", "DataStructures", "FFTViews", "FFTW", "ImageBase", "ImageCore", "LinearAlgebra", "OffsetArrays", "PrecompileTools", "Reexport", "SparseArrays", "StaticArrays", "Statistics", "TiledIteration"]
+git-tree-sha1 = "432ae2b430a18c58eb7eca9ef8d0f2db90bc749c"
+uuid = "6a3955dd-da59-5b1f-98d4-e7296123deb5"
+version = "0.7.8"
 
 [[deps.ImageIO]]
 deps = ["FileIO", "IndirectArrays", "JpegTurbo", "LazyModules", "Netpbm", "OpenEXR", "PNGFiles", "QOI", "Sixel", "TiffImages", "UUIDs"]
@@ -2881,6 +2928,23 @@ git-tree-sha1 = "46e589465204cd0c08b4bd97385e4fa79a0c770c"
 uuid = "cae243ae-269e-4f55-b966-ac2d0dc13c15"
 version = "0.1.1"
 
+[[deps.Static]]
+deps = ["IfElse"]
+git-tree-sha1 = "d2fdac9ff3906e27f7a618d47b676941baa6c80c"
+uuid = "aedffcd0-7271-4cad-89d0-dc628f76c6d3"
+version = "0.8.10"
+
+[[deps.StaticArrayInterface]]
+deps = ["ArrayInterface", "Compat", "IfElse", "LinearAlgebra", "PrecompileTools", "Requires", "SparseArrays", "Static", "SuiteSparse"]
+git-tree-sha1 = "5d66818a39bb04bf328e92bc933ec5b4ee88e436"
+uuid = "0d7ed370-da01-4f52-bd93-41d350b8b718"
+version = "1.5.0"
+weakdeps = ["OffsetArrays", "StaticArrays"]
+
+    [deps.StaticArrayInterface.extensions]
+    StaticArrayInterfaceOffsetArraysExt = "OffsetArrays"
+    StaticArrayInterfaceStaticArraysExt = "StaticArrays"
+
 [[deps.StaticArrays]]
 deps = ["LinearAlgebra", "PrecompileTools", "Random", "StaticArraysCore"]
 git-tree-sha1 = "6e00379a24597be4ae1ee6b2d882e15392040132"
@@ -3014,6 +3078,12 @@ deps = ["ColorTypes", "DataStructures", "DocStringExtensions", "FileIO", "FixedP
 git-tree-sha1 = "bc7fd5c91041f44636b2c134041f7e5263ce58ae"
 uuid = "731e570b-9d59-4bfa-96dc-6df516fadf69"
 version = "0.10.0"
+
+[[deps.TiledIteration]]
+deps = ["OffsetArrays", "StaticArrayInterface"]
+git-tree-sha1 = "1176cc31e867217b06928e2f140c90bd1bc88283"
+uuid = "06e1c1a7-607b-532d-9fad-de7d9aa2abac"
+version = "0.5.0"
 
 [[deps.TimerOutputs]]
 deps = ["ExprTools", "Printf"]
@@ -3489,29 +3559,29 @@ version = "1.4.1+1"
 """
 
 # ╔═╡ Cell order:
-# ╠═84d0eb5e-0cad-49b3-a22f-611c0cf9d9f1
+# ╟─84d0eb5e-0cad-49b3-a22f-611c0cf9d9f1
 # ╟─36131d26-2f3a-11ef-3de8-07e188f06faf
 # ╟─757f526e-9dde-4a94-84d6-bdb655b70dcf
 # ╠═eaa49b9e-09b4-4b35-b4e7-610812150d13
-# ╠═2287d692-0196-4aed-bb4e-bdf9233f01b2
+# ╟─2287d692-0196-4aed-bb4e-bdf9233f01b2
 # ╠═baa898f1-b7aa-43dc-b561-4dc2f00edeb4
 # ╟─b52b0883-3ff8-4fc6-84bd-cb2fcfa95fa6
 # ╠═dd77356a-8381-493e-b923-838b29454755
 # ╟─104638ef-cf75-4edc-9079-0fc4a32bea35
 # ╠═5121376f-9c2b-43be-8b8c-e87140873411
-# ╠═2a7c196b-370d-4541-93a9-6b8ba30e374e
+# ╟─2a7c196b-370d-4541-93a9-6b8ba30e374e
 # ╟─546a1e7a-73be-4489-adae-b26eb33c9c0f
 # ╠═1dac486c-5e63-4d35-b00c-715dbad34553
-# ╠═0f3e2f61-2a1c-41f5-93a3-e63766f2863a
+# ╟─0f3e2f61-2a1c-41f5-93a3-e63766f2863a
 # ╠═be42b966-28b1-48c6-9cf8-7aa7d071092e
 # ╟─2d4dfea8-5807-4f92-b67b-d5249da5069e
 # ╠═fca350f9-43bf-40b0-9f26-78c8bb87ab3f
 # ╠═1e848522-261f-41e1-bd5e-162309bee7b9
-# ╠═17f01e2b-a8db-452c-9414-11fbcde2daf7
+# ╟─17f01e2b-a8db-452c-9414-11fbcde2daf7
 # ╠═06fae4fa-4db3-42cb-88e4-b5f5f9a58435
-# ╠═894cd2b7-318b-4677-9d71-36744e168086
+# ╟─894cd2b7-318b-4677-9d71-36744e168086
 # ╠═7f92a568-2fc2-4f23-aa72-122554a5e916
-# ╠═21bfd374-1907-4de1-be18-3a3bd94387e5
+# ╟─21bfd374-1907-4de1-be18-3a3bd94387e5
 # ╠═f6ac6742-ad5e-49b6-8522-d38d9b2a5cdb
 # ╠═a484c077-d864-43af-9351-a1e86737efc3
 # ╠═59a81c3e-d317-47ad-a3a3-35d0b486de5e
@@ -3527,24 +3597,24 @@ version = "1.4.1+1"
 # ╟─ca6672f9-12fa-4d58-b67d-48801e3b3b57
 # ╠═d645ad59-93e0-427a-a43e-d861cc31af56
 # ╟─4c8d2963-7e15-41fc-9b88-958004a2d077
-# ╠═d338dc6e-d75e-4b7a-b1ba-562e38e0d548
+# ╟─d338dc6e-d75e-4b7a-b1ba-562e38e0d548
 # ╟─fe6a0bc8-b88d-4a96-97bb-6f9c27a2bfcb
 # ╟─66f51dc1-af56-417f-a963-8e91f97e0e26
 # ╟─208067d1-3994-4eb7-894e-3fe85e856d43
-# ╠═f3e6eaa8-7a24-48c6-af5e-0bf3e94a9097
+# ╟─f3e6eaa8-7a24-48c6-af5e-0bf3e94a9097
 # ╠═06f5466d-7625-4ff2-bf1e-88f30e13f338
 # ╠═155497af-8f49-48c5-831d-398d2814c7c4
 # ╠═e621d52b-b8e7-4831-8466-e95e66bb8b71
 # ╠═6161ea48-9b0e-40dd-a6e0-a18fe7ee5fef
 # ╠═e2405719-65a7-4af8-b0ef-e94715e8ea92
 # ╠═20926046-3d18-4dfd-9666-029ca2db77dc
-# ╠═ff14fba4-58d4-4227-8ca7-3d62ec05184b
+# ╟─ff14fba4-58d4-4227-8ca7-3d62ec05184b
 # ╠═d6189b73-12d2-4968-8111-aff8b6e4bd80
 # ╟─653a7739-d6cb-45ca-9a6b-648578528807
 # ╠═e1a02fc0-8258-4982-9b13-1bb5ae77f8d0
 # ╟─87719835-6299-41fc-9cd6-72241b692a93
 # ╠═0976730c-ea31-4eab-a3df-f7f8dcefccf7
-# ╠═ba328c8e-8cb9-4c32-9c07-ca0ce54a032e
+# ╟─ba328c8e-8cb9-4c32-9c07-ca0ce54a032e
 # ╠═532f9abf-89db-4ce9-ab29-96a9dab21354
 # ╟─54ccdd60-8ce7-49c1-9ee9-487aa0bf56df
 # ╠═252b2a32-8d5d-406a-9d93-e823b169ae65
@@ -3556,7 +3626,7 @@ version = "1.4.1+1"
 # ╟─3d348523-540c-430f-a640-0e938a7ab1a0
 # ╠═0a2095c0-75d4-419c-8dea-c382494dc2fd
 # ╟─61973889-3b63-45f6-8828-044362c79650
-# ╠═1aab4157-a2c8-4bca-9fb7-f34a15850646
+# ╟─1aab4157-a2c8-4bca-9fb7-f34a15850646
 # ╠═25330e9a-d0ce-4bef-97d6-6769b1b89091
 # ╠═2d08e617-a032-476d-bb4c-15b006b24272
 # ╟─ad69cc5b-bdba-4ec3-a88f-4082286224de
@@ -3572,24 +3642,28 @@ version = "1.4.1+1"
 # ╟─871f7abf-7316-4512-bb1f-cfd4d05304e0
 # ╠═a845f37b-d4cf-463e-8643-8df32c06ab43
 # ╠═45aa1771-dd77-4029-8f38-44c736b2d2d1
-# ╠═abb796e1-4d4e-44ad-9687-b82924b897bd
+# ╟─abb796e1-4d4e-44ad-9687-b82924b897bd
+# ╠═52019889-df5d-45e6-8c65-d6a00028e6bb
 # ╠═c67cdfd4-3b2d-4cea-a379-e98f0bf30ae0
-# ╠═78f66fa3-45a7-406e-b28a-cb1d1ba8d460
+# ╟─78f66fa3-45a7-406e-b28a-cb1d1ba8d460
 # ╠═beb92853-9152-4161-ba4c-106bf019465a
 # ╠═f63e0d02-79f1-4532-a5e5-266d910e8ea7
 # ╟─b05d645d-515b-4221-8228-5043edeaa69a
 # ╠═6532de1a-f5d6-48f8-a2c9-495342d6ff08
 # ╠═c0aa2bc6-c75a-42d3-b90b-15f9fa859800
 # ╠═c494e91d-f7c3-4e06-997c-f4340d30a756
+# ╠═6d577c04-94d8-4cc4-a911-b54fb7bd47f6
 # ╠═046e5512-6d86-4e85-83b1-5f56fd9cc950
 # ╟─d9228894-809e-466d-9a73-247ffc80dff5
-# ╠═db289987-9fe3-44e1-b356-1bb4c1f78bc9
+# ╟─db289987-9fe3-44e1-b356-1bb4c1f78bc9
 # ╠═5a487f3e-8ec0-45c8-bc7e-a1666cb00c1a
 # ╠═5ba7adaf-b78f-4f85-bc89-8deec4a2ea92
 # ╟─486eb180-3d81-4ced-9451-0412c8bf4b14
 # ╟─c59df7f0-b006-47f4-88b0-aeda378b64f9
-# ╠═4560be14-5758-43bf-b274-511b826461e1
 # ╠═ed1a5c4b-adc8-4278-ba21-ea38ae0c4c38
 # ╠═41d0fb1b-6f8f-4621-ac40-31b98df68588
+# ╟─549564c1-ba25-4450-9706-909253c46ea9
+# ╟─2c170c45-3362-432f-8926-c884582f52fe
+# ╟─97ece260-e4f1-4816-a6f4-5b1abeb87518
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
