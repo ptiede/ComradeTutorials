@@ -488,7 +488,7 @@ For the image model we need to define the raster on which the image will live. F
 """
 
 # ╔═╡ 2865a27d-25b2-4faa-8e30-66d5f763fa9a
-gimage = imagepixels(μas2rad(150.0), μas2rad(150.0), 32, 32) 
+gimage = imagepixels(μas2rad(100.0), μas2rad(100.0), 24, 24) 
 
 # ╔═╡ 871f7abf-7316-4512-bb1f-cfd4d05304e0
 md"""
@@ -497,7 +497,7 @@ For this tutorial we will also specify an apriori image that sets the rough scal
 !!! note
     Fixing the image isn't required in general and can be fit as well by Comrade. There is a tutorial in progress that will demonstrate this.
 
-For the mean image we will use a Gaussian with FWHM of 60 uas
+For the mean image we will use a Gaussian with FWHM of 50 uas
 """
 
 # ╔═╡ a845f37b-d4cf-463e-8643-8df32c06ab43
@@ -521,9 +521,6 @@ The explicit GMRF prior we will use the the first-order model that is equivalent
 
 In addition, while we fix the image correlation length in this tutorial, we generally recommend you fit these parameters as is done in the Comrade documentation tutorials
 """
-
-# ╔═╡ 52019889-df5d-45e6-8c65-d6a00028e6bb
-cmarkov = ConditionalMarkov(GMRF, gimage)
 
 # ╔═╡ c67cdfd4-3b2d-4cea-a379-e98f0bf30ae0
 imageprior = (
@@ -3643,7 +3640,6 @@ version = "1.4.1+1"
 # ╠═a845f37b-d4cf-463e-8643-8df32c06ab43
 # ╠═45aa1771-dd77-4029-8f38-44c736b2d2d1
 # ╟─abb796e1-4d4e-44ad-9687-b82924b897bd
-# ╠═52019889-df5d-45e6-8c65-d6a00028e6bb
 # ╠═c67cdfd4-3b2d-4cea-a379-e98f0bf30ae0
 # ╟─78f66fa3-45a7-406e-b28a-cb1d1ba8d460
 # ╠═beb92853-9152-4161-ba4c-106bf019465a
