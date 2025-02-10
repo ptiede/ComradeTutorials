@@ -60,11 +60,13 @@ to launch the Pluto server in your default browser.
 
 ### Tutorials 
 
-Currently we recommend people try the tutorials in the 
+Currently we recommend people try the tutorials in this order
 
  1. `hw1_loadingdata.jl`: How to load and plot data with Comrade 
  2. `hw2_geommodeling.jl`: How to fit simple geometric models with Comrade 
  3. `hw3_imaging.jl`: How to image total intensity visibilities with Comrade including Bayesian self-calibration.
  4. `hw4_polarized_imaging.jl`: How to do polarized imaging of `Comrade` including gains, gain ratios, and leakage calibration.
 
-
+To run the notebooks first launch Pluto then open the notebook there. Note that the it will not run immediately since the 
+default behavior is that the notebook will be in safe mode. To run it you need to hit run notebook on the top banner.
+Additionally, note that hw 1 and 2 will note immediately run since the user will need to specify the data to read in. 

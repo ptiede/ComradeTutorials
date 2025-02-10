@@ -93,6 +93,20 @@ Additionally, since image total flux is degenerate with gains we also want to ma
 In this setting, the parameters `c` can then be viewed as stochastic fluctuations on top of the mean image `mimg`. For simplicity, `Comrade` provides the convienence function `apply_fluctuations` for this transform.
 """
 
+# ╔═╡ 3445be32-e7b2-11ef-0761-490798441193
+function sky(θ, metadata)
+    (;fg, c, σimg) = θ
+    (;ftot, mimg) = metadata
+    # Apply the GMRF fluctuations to the image
+    rast = apply_fluctuations(CenteredLR(), mimg, σimg.*c.params)
+    @. rast = (ftot*(1-fg))*rast
+    m = ContinuousImage(rast, BSplinePulse{3}())
+    x0, y0 = centroid(m)
+    # Add a large-scale gaussian to deal with the over-resolved mas flux
+    g = modify(Gaussian(), Stretch(μas2rad(500.0), μas2rad(500.0)), Renormalize(ftot*fg))
+    return shifted(m, -x0, -y0) + g
+end
+
 # ╔═╡ 3445be3e-e7b2-11ef-2278-694bb6eeb99b
 md"""
 Now, let's set up our image model. The EHT's nominal resolution is 20-25 μas. Additionally,
@@ -124,20 +138,6 @@ begin
 	fwhmfac = 2*sqrt(2*log(2))
 	mpr  = modify(Gaussian(), Stretch(μas2rad(50.0)./fwhmfac))
 	mprior = intensitymap(mpr, grid)
-end
-
-# ╔═╡ 3445be32-e7b2-11ef-0761-490798441193
-function sky(θ, metadata)
-    (;fg, c, σimg) = θ
-    (;ftot, mimg) = metadata
-    # Apply the GMRF fluctuations to the image
-    rast = apply_fluctuations(CenteredLR(), mimg, σimg.*c.params)
-    @. rast = (ftot*(1-fg))*rast
-    m = ContinuousImage(rast, BSplinePulse{3}())
-    x0, y0 = centroid(m)
-    # Add a large-scale gaussian to deal with the over-resolved mas flux
-    g = modify(Gaussian(), Stretch(μas2rad(500.0), μas2rad(500.0)), Renormalize(ftot*fg))
-    return shifted(m, -x0, -y0) + g
 end
 
 # ╔═╡ 3445be78-e7b2-11ef-3d5f-01f25590b13c
