@@ -169,7 +169,7 @@ You can also plot individual baselines using `baselineplot` or plotfields. For i
 @bind s1 PlutoUI.Select(sites(amp))
 
 # ╔═╡ 89e45f1c-9ef7-406a-9742-bab1507aec2b
-@bind s2 PlutoUI.Select(sites(amp))
+@bind s2 PlutoUI.Select(deleteat!(sites(amp), findfirst(==(s1), sites(amp))))
 
 # ╔═╡ f1b294ee-e3ea-448d-af93-dd117f750096
 begin
@@ -2421,10 +2421,10 @@ version = "3.6.0+0"
 # ╠═2adfdeae-e7b2-11ef-30d5-efbce9b31ec6
 # ╟─2adfdeb8-e7b2-11ef-3b5e-41ed6314c635
 # ╠═2adfdeca-e7b2-11ef-0975-9126bf907743
-# ╠═19aa457a-7a05-49c6-8509-6dfe1e8e141e
+# ╟─19aa457a-7a05-49c6-8509-6dfe1e8e141e
 # ╠═a8b5d7bb-256b-4999-924c-a29c154068ab
-# ╟─d77519a8-546d-43b1-b14e-d63c099bf07a
-# ╟─89e45f1c-9ef7-406a-9742-bab1507aec2b
+# ╠═d77519a8-546d-43b1-b14e-d63c099bf07a
+# ╠═89e45f1c-9ef7-406a-9742-bab1507aec2b
 # ╠═f1b294ee-e3ea-448d-af93-dd117f750096
 # ╟─cca41608-52a5-42da-9e0b-56e6b0b542d0
 # ╟─2adfdee0-e7b2-11ef-3823-19cfa96f561d
