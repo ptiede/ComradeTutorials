@@ -49,7 +49,7 @@ Load the data you want to analyze. We recommend the same data as in the previous
 """
 
 # ╔═╡ 3445bdce-e7b2-11ef-0d84-6919842abed2
-obs = nothing # load data here
+obs = ehtim.obsdata.load_uvfits("Data/SR2_M87_2017_096_hi_hops_ALMArot.uvfits")
 
 # ╔═╡ 3445bdda-e7b2-11ef-1f0f-837f58f39272
 md"""
@@ -76,7 +76,7 @@ Now you need to figure out how to extract the complex visibilities of the data.
 """
 
 # ╔═╡ 3445bdf6-e7b2-11ef-279d-3f08136f2226
-dvis = nothing # extract visibilities here
+dvis = extract_table(obsavg, Visibilities()) # extract visibilities here
 
 # ╔═╡ 3445be00-e7b2-11ef-37c5-53397b55da93
 md"""
@@ -93,20 +93,6 @@ Additionally, since image total flux is degenerate with gains we also want to ma
 In this setting, the parameters `c` can then be viewed as stochastic fluctuations on top of the mean image `mimg`. For simplicity, `Comrade` provides the convienence function `apply_fluctuations` for this transform.
 """
 
-# ╔═╡ 3445be32-e7b2-11ef-0761-490798441193
-function sky(θ, metadata)
-    (;fg, c, σimg) = θ
-    (;ftot, mimg) = metadata
-    # Apply the GMRF fluctuations to the image
-    rast = apply_fluctuations(CenteredLR(), mimg, σimg.*c.params)
-    @. rast = (ftot*(1-fg))*rast
-    m = ContinuousImage(rast, BSplinePulse{3}())
-    x0, y0 = centroid(m)
-    # Add a large-scale gaussian to deal with the over-resolved mas flux
-    g = modify(Gaussian(), Stretch(μas2rad(500.0), μas2rad(500.0)), Renormalize(ftot*fg))
-    return shifted(m, -x0, -y0) + g
-end
-
 # ╔═╡ 3445be3e-e7b2-11ef-2278-694bb6eeb99b
 md"""
 Now, let's set up our image model. The EHT's nominal resolution is 20-25 μas. Additionally,
@@ -117,7 +103,7 @@ to describe our image.
 
 # ╔═╡ 3445be50-e7b2-11ef-0c7b-e9c40158993d
 begin
-	npix = 32
+	npix = 64
 	fovx = μas2rad(200.0)
 	fovy = μas2rad(200.0)
 end
@@ -138,6 +124,20 @@ begin
 	fwhmfac = 2*sqrt(2*log(2))
 	mpr  = modify(Gaussian(), Stretch(μas2rad(50.0)./fwhmfac))
 	mprior = intensitymap(mpr, grid)
+end
+
+# ╔═╡ 3445be32-e7b2-11ef-0761-490798441193
+function sky(θ, metadata)
+    (;fg, c, σimg) = θ
+    (;ftot, mimg) = metadata
+    # Apply the GMRF fluctuations to the image
+    rast = apply_fluctuations(CenteredLR(), mimg, σimg.*c.params)
+    @. rast = (ftot*(1-fg))*rast
+    m = ContinuousImage(rast, BSplinePulse{3}())
+    x0, y0 = centroid(m)
+    # Add a large-scale gaussian to deal with the over-resolved mas flux
+    g = modify(Gaussian(), Stretch(μas2rad(500.0), μas2rad(500.0)), Renormalize(ftot*fg))
+    return shifted(m, -x0, -y0) + g
 end
 
 # ╔═╡ 3445be78-e7b2-11ef-3d5f-01f25590b13c
@@ -373,8 +373,8 @@ Let's start by finding the mean and standard deviation of the gain phases
 
 # ╔═╡ 3445c04e-e7b2-11ef-0a04-4b105b2236ef
 begin
-	mchain = Comrade.rmap(mean, chain);
-	schain = Comrade.rmap(std, chain);
+	mchain = Comrade.rmap(mean, chainsub);
+	schain = Comrade.rmap(std, chainsub);
 end
 
 # ╔═╡ 3445c06c-e7b2-11ef-339d-317b78085cb4

@@ -61,7 +61,7 @@ To load the data we will use `eht-imaging`. We will use the 2017 public M87 data
 """
 
 # ╔═╡ 2adfddc8-e7b2-11ef-2be7-7fb58519d211
-obseht = ehtim.obsdata.load_uvfits(joinpath(@__DIR__, "Data/SR2_M87_2017_096_hi_hops_ALMArot.uvfits"))
+obseht = ehtim.obsdata.load_uvfits(joinpath(@__DIR__, "Data", "SR2_M87_2017_096_hi_hops_ALMArot.uvfits"))
 
 # ╔═╡ 2adfdddc-e7b2-11ef-202c-53f4c1d7cc99
 md"""
@@ -111,6 +111,9 @@ begin
 	coh = extract_table(obspolavg, Coherencies())
 end
 
+# ╔═╡ 1291389a-acf6-4dab-b079-03bcdbec7e00
+exp.(Comrade.measwnoise.(datatable(vis)))
+
 # ╔═╡ 2adfde6a-e7b2-11ef-195a-f18f3ff493bb
 md"""
 !!! warn
@@ -127,6 +130,15 @@ To plot the uv-coverage we can use the simple forward facing function `plotfield
 
 # ╔═╡ 2adfde86-e7b2-11ef-271c-a1e5070ca0d2
 plotfields(coh, :U, :V, axis_kwargs=(xreversed=true,))
+
+# ╔═╡ 69625e2a-c24d-4b0e-ab0b-d279e7ccf974
+begin
+	figtmp, axtmp = baselineplot(coh, (:LM, :AP), Fr, x->abs(Comrade.measwnoise(x)[2,2]), error=true)
+	baselineplot!(axtmp, coh, (:LM, :AA), Fr, x->abs(Comrade.measwnoise(x)[2,2]), error=true, color=:red)
+	axtmp.xlabel = "Fr"
+	axtmp.ylabel = "|RR|"
+	figtmp
+end
 
 # ╔═╡ 2adfde98-e7b2-11ef-24fc-41d1338c6ebc
 md"""
@@ -2414,9 +2426,11 @@ version = "3.6.0+0"
 # ╠═2adfde2c-e7b2-11ef-1b02-d1ab29d190ab
 # ╟─2adfde40-e7b2-11ef-0d77-374ebe82c585
 # ╠═2adfde54-e7b2-11ef-0d65-4b21eb9627f0
+# ╠═1291389a-acf6-4dab-b079-03bcdbec7e00
 # ╟─2adfde6a-e7b2-11ef-195a-f18f3ff493bb
 # ╟─2adfde72-e7b2-11ef-3f0e-6b6bbbbc5ab2
 # ╠═2adfde86-e7b2-11ef-271c-a1e5070ca0d2
+# ╠═69625e2a-c24d-4b0e-ab0b-d279e7ccf974
 # ╟─2adfde98-e7b2-11ef-24fc-41d1338c6ebc
 # ╠═2adfdeae-e7b2-11ef-30d5-efbce9b31ec6
 # ╟─2adfdeb8-e7b2-11ef-3b5e-41ed6314c635
