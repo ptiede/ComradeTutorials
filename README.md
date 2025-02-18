@@ -11,7 +11,7 @@ Currently we recommend installing [juliaup](https://github.com/JuliaLang/juliaup
 As of Feb 10, 2025, you should use the LTS 1.10 Julia series version, and not the current release 1.11.
 juliaup will by default install the current release. To install the LTS version do 
 ```bash 
-juliaup install lts 
+juliaup add lts 
 juliaup default lts 
 ```
 Which will make LTS the default version when you type `julia` in your terminal. 
